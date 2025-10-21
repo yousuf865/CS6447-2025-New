@@ -1,10 +1,10 @@
 # comp6447-fuzzer
 Repository for the COMP6447 assignment at UNSW to create a fuzzer. Spec can be found [here](https://fuzzer.6447.lol/spec)
 ## Due dates:
-- **Midpoint check-in:** 25/10/2024
-- **Final due date:** 11/11/2024
+- **Midpoint check-in:** Week 7 Friday 4pm (Oct 31)
+- **Final due date:** Week 10 Friday 4pm (Nov 22)
 ## Midpoint checkin
-- Only csv1 and json1 are tested for checkin
+- Only csv1 and json1 are tested for midpoint checkin
 
 ### Example usage:
 ```bash
