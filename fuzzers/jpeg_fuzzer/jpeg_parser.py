@@ -47,11 +47,11 @@ class JPEGparser:
             parsed = Jpeg.from_bytes(data)
             print('--- JPEG parsed ---')
 
-            for segment in parsed.segments:
+            for order, segment in enumerate(parsed.segments):
                 segment_name = segment.marker.name
                 segment_data = getattr(segment, 'data', None)
                 segment_length = getattr(segment, 'length', None)
-                self.markers.setdefault(segment_name,[]).append((segment_length, segment_data))
+                self.markers.setdefault(segment_name,[]).append((segment_length, segment_data, order))
 
             return self.markers
         except Exception as e:
@@ -62,7 +62,7 @@ class JPEGparser:
         dht_data = dht_elem[1]
         
         table_data = []
-        
+         
         curr = 0
         while curr < len(dht_data):
             curr_table = dht_data[curr:]
@@ -80,3 +80,15 @@ class JPEGparser:
             curr += table_length + 17
         return table_data
 
+    # Remake the jpeg
+    # --------------------
+    # Current syntax of segments are (length, data, order)
+    def jpeg_constructor(self, segments_set):
+        segments_ordered = []
+
+        for segment in self.markers.values():
+            segments_ordered.extend(segment)
+
+        segments_ordered = sorted(segments_ordered, key=lambda x: x[2])
+
+        return b"".join(data for length, data, order in segments_ordered)
