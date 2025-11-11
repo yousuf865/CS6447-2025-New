@@ -174,6 +174,5 @@ class JSONFuzzer:
             "wrong_input":wrong_input
         }
 
-
-
         return json.dumps(payload), mutation_dict
+
