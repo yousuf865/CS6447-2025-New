@@ -23,7 +23,7 @@ else:
             segment_length = getattr(segment, 'length', 'N/A')
             segment_data = getattr(segment, 'data', 'N/A')
 
-            print(f"[{segment_name}] Length: {segment_length}")
+            print(f"[{segment_name}][{hex(segment.marker)}] Length: {segment_length}")
             print(f"[{segment_name}] Data: {segment_data}")
             
     except Exception as e:

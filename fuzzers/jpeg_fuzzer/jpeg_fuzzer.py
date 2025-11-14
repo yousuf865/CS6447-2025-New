@@ -66,7 +66,7 @@ class JPEGFuzzer:
     def pattern(self):
         return
     
-    def mutation_parameters(self, marker_mutate_count=None):
+    def mutation_parameters(self, marker_mutate_count=None, mutate_markers=None):
         if self.jpg_bytes == None:
             print('jpg not recieved!')
             return 

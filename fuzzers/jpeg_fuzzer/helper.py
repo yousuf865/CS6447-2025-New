@@ -34,66 +34,92 @@ jpg_markers_bytes = {
 }
 
 
-#table_data {
-#    'table_type': table_id, 
-#    'code_lengths': code_lengths,
-#    'table': code_table
-#}
-# original_huffman = array of table_data
-def huffman_mutate(original_dht, mutate_table_id=None, mutate_code_amounts=None):
-    dht = copy.deepcopy(original_dht)
+class JPEG_mutator:
+    #table_data {
+    #    'table_type': table_id, 
+    #    'code_lengths': code_lengths,
+    #    'table': code_table
+    #}
+    # original_huffman = array of table_data
+    def huffman_mutate(self, original_dht, mutate_table_id=None, mutate_code_amounts=None):
+        dht = copy.deepcopy(original_dht)
 
-    # --------------------------------- Mutate table ------------------------------
-    # randomise tables to mutate
-    tables_to_mutate = []
-    r = random.randint(0, len(dht))
-    for i in range(r):
-        tables_to_mutate.append(dht[random.randint(0, len(dht))])
+        # --------------------------------- Mutate table ------------------------------
+        # randomise tables to mutate
+        tables_to_mutate = []
+        r = random.randint(0, len(dht))
+        for i in range(r):
+            tables_to_mutate.append(dht[random.randint(0, len(dht))])
 
-    # mutate table
-    for table_data in tables_to_mutate:
-        table = table_data['table']
-        strategies = [Mutations().bit_flip()]
-        strat = random.choice(strategies)
+        # mutate table
+        for table_data in tables_to_mutate:
+            table = table_data['table']
+            strategies = [Mutations().bit_flip()]
+            strat = random.choice(strategies)
 
-        table = Mutations().bit_flip(table, random.randint(0, len(table)))
-        table_data['table_id'] = random.randint(0,32)
+            # TODO: what about BYTE flip?
+            table = Mutations().bit_flip(table, random.randint(0, len(table)))
+            table_data['table_id'] = random.randint(0,32)
 
-        table_bit_idx = 0
-        for i in range(0, 16):
-            random_boolean = random.choice([True, False])
-             
-            table_bit_idx += table_data['code_lengths'][i] 
-            
-            # the amount of code of length i to be added, right now only up to 5 additions
-            add_code_num = random.randint(0, 5) if random_boolean else 0
-            
-            # randomise minus or not (addition can be minus as well right :P)
-            # forgive bad variable name
-            add_code_num *= -1 if random.choice([True, False]) else 1
-            
-            if add_code_num >= 0:
-                addition_bits = [random.choice([0, 1]) for _ in range(add_code_num)]
+            table_bit_idx = 0
+            for i in range(0, 16):
+                random_boolean = random.choice([True, False])
+                 
+                table_bit_idx += table_data['code_lengths'][i] 
                 
-                table = table[:table_bit_idx] + addition_bits + table[table_bit_idx:]
+                # the amount of code of length i to be added, right now only up to 5 additions
+                add_code_num = random.randint(0, 5) if random_boolean else 0
                 
-                # adjust index after addition to still be on current index
-                table_bit_idx += add_code_num
-                table_data['code_lengths'][i] += add_code_num
-            else:
-                table_bit_idx -= add_code_num
+                # randomise minus or not (addition can be minus as well right :P)
+                # forgive bad variable name
+                add_code_num *= -1 if random.choice([True, False]) else 1
+                
+                if add_code_num >= 0:
+                    addition_bits = [random.choice([0, 1]) for _ in range(add_code_num)]
+                    
+                    table = table[:table_bit_idx] + addition_bits + table[table_bit_idx:]
+                    
+                    # adjust index after addition to still be on current index
+                    table_bit_idx += add_code_num
+                    table_data['code_lengths'][i] += add_code_num
+                else:
+                    table_bit_idx -= add_code_num
 
-                table = table[:table_bit_idx] + table[table_bit_idx:]
-                table_data['code_lengths'][i] -= add_code_num
+                    table = table[:table_bit_idx] + table[table_bit_idx:]
+                    table_data['code_lengths'][i] -= add_code_num
 
-    return dht
+        return dht
 
 
 
-# random position of a marker (possibly making it double)
-def double_markers(jpg_bytes, jpg_length, marker):
-    mutate_count  = 200 if marker_mutate_count is None else marker_mutate_count
+    # random position of a marker (possibly making it double)
+    def double_markers(self, jpg_bytes, jpg_length, marker):
+        mutate_count  = 200 if marker_mutate_count is None else marker_mutate_count
 
-    r = random.randint(0, jpg_length)
+        r = random.randint(0, jpg_length)
 
-    return jpg_bytes[:r] + marker + jpg_bytes[(r + 2):]
+        return jpg_bytes[:r] + marker + jpg_bytes[(r + 2):]
+
+    def marker_mutate(self, segments, num_to_mutate=None):
+        count = num_to_mutate if num_to_mutate else 1
+        
+        for i in range(count):
+            segment_name = random.choice(list(segments.keys()))
+
+            data = segments[segment_name]
+            r = random.randint(0, len(data))
+
+    def single_segment_agnostic_mutation(self, segment: tuple):
+        marker, length, data, order = segment   # Order kinda useless here
+        
+        # TODO: what about BYTE flip?
+        strat = random.choice([Mutations().bit_flip()])
+        
+        parts = [marker, length, data]
+        mutate_idx = random.randint(0, 3)
+
+        mutated_part = strat(parts[mutate_idx], random.randint(0, len(parts[mutate_idx]))
+        
+        parts[mutate_idx] = mutated_part
+
+        return tuple(parts)

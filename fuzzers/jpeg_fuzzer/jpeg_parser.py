@@ -51,7 +51,8 @@ class JPEGparser:
                 segment_name = segment.marker.name
                 segment_data = getattr(segment, 'data', None)
                 segment_length = getattr(segment, 'length', None)
-                self.markers.setdefault(segment_name,[]).append((segment_length, segment_data, order))
+                full_marker = b'FF' + segment.marker
+                self.markers.setdefault(segment_name,[]).append((full_marker, segment_length, segment_data, order))
 
             return self.markers
         except Exception as e:
@@ -80,6 +81,36 @@ class JPEGparser:
             curr += table_length + 17
         return table_data
 
+    def dqt_parse(self, segment: tuple):
+        data = segment[2]
+
+        # bit 0..3: number of QT (0..3, otherwise error) bit 4..7: the precision of QT, 0 = 8 bit, otherwise 16 bit
+        QT_info = data[0] 
+
+        QT_bytes = data[1:]
+
+        return QT_info, QT_bytes
+
+    def SOF_parse(self, segment: tuple):
+        data = segment[2]
+
+        data_precision = data[0]
+        image_height = data[1:3]
+        image_width = data[3:5]
+        num_components = data[5:6]
+        components = []
+
+        curr = 6
+        for i in range(num_components):
+            component = data[curr : curr + 3]
+            components.append(component)
+            curr += 3
+        return data_precision, image_height, image_width, num_components, components
+
+    def SOS_parse(self, segment: tuple):
+        # TODO
+        pass
+
     # Remake the jpeg
     # --------------------
     # Current syntax of segments are (length, data, order)
@@ -90,5 +121,5 @@ class JPEGparser:
             segments_ordered.extend(segment)
 
         segments_ordered = sorted(segments_ordered, key=lambda x: x[2])
-
-        return b"".join(data for length, data, order in segments_ordered)
+        
+        return b"".join((marker.to_bytes() + length.to_bytes() + data) for marker, length, data, order in segments_ordered)
