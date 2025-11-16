@@ -109,6 +109,28 @@ class JPEG_mutator:
             data = segments[segment_name]
             r = random.randint(0, len(data))
 
+    def sof_mutate(self, segment):
+        def mutate_data(data):
+            if random.choice([True,False]):
+                return data
+            r = random.randint(0, 10) 
+
+            if random.choice([True,False]):
+                ret = data - r
+                return ret if ret <= 0 else 1
+            else:
+                return data + r
+
+        data_precision, image_height, image_width, num_components, components = segment
+        
+        data_precision = mutate_data(data_precision)
+        image_height = mutate_data(image_height)
+        image_width = mutate_data(image_width)
+
+        #TODO component mutate
+        
+        return data_precision, image_height, image_width, num_components, components
+
     def sos_mutate(self, segment, component_mutation=None): 
         def component_deletion(num,components):
             for i in range(num):

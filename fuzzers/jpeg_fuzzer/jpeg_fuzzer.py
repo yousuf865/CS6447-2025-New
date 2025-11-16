@@ -76,8 +76,17 @@ class JPEGFuzzer:
         for marker in jpg_marker_bytes.values():
             mutate_bytes = double_markers(self.jpg_bytes, len(self.jpg_bytes), marker)
             
-        
-    
+        if random.choice([False, True]):
+            dht = JPEG_mutator.huffman_mutate(dht) # the i havent put together the parse here, its in jpeg_parser.py tho
 
+        if random.choice([False, True]):
+            sos = JPEG_mutator.sos_mutate(sos, random.choice([False, True])) # again, still in jpeg_parser.py
+        
+        if random.choice([False, True]):
+            sof = JPEG_mutator.sof_mutate(sof) # same
+
+        #TODO return the reconstructed jpeg with JPEG_CONSTRUCTOR in JPEG_PARSER
+
+        pass
 
             
