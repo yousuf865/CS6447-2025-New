@@ -111,12 +111,60 @@ class JPEGparser:
     # Remake the jpeg
     # --------------------
     # Current syntax of segments are (length, data, order)
-    def jpeg_constructor(self, segments_set):
-        segments_ordered = []
+    def jpeg_constructor(self, segments_set: Any) -> bytes:
 
-        for segment in self.markers.values():
-            segments_ordered.extend(segment)
+        # --- 1. Order Segments ---
+        segments_ordered: List[SegmentTuple] = []
+        for segment_list in self.markers.values():
+            segments_ordered.extend(segment_list)
 
-        segments_ordered = sorted(segments_ordered, key=lambda x: x[2])
-        
-        return b"".join((marker.to_bytes() + length.to_bytes() + data) for marker, length, data, order in segments_ordered)
+        # Sort based on the 'order' index (the 4th element: x[3])
+        # Note: I changed the index from your original x[2] to x[3] based on your tuple structure (marker, length, data, order)
+        segments_ordered.sort(key=lambda x: x[3])
+
+        # --- 2. Prepare (Stuff Bytes and Recalculate Lengths) ---
+        reconstructed_segments = []
+
+        for marker_val, _, data_payload, order in segments_ordered:
+
+            processed_data = data_payload
+
+            # Byte Stuffing is ONLY required for the compressed data stream (which follows SOS, 0xFFDA)
+            # The last segment in a normal stream is usually the compressed data block itself.
+            is_compressed_data = (marker_val == 0xFFDA or order == len(segments_ordered) - 1)
+
+            # The simplified logic assumes the last segment is the data *if* it follows SOS,
+            # but usually, you only stuff the data payload itself, which is a different item
+            # than the marker segments, but we'll adapt to your current structure:
+
+            if marker_val == 0xffda: # We assume this is the SOS segment
+                 # You should only stuff the data *after* the SOS marker
+                 # The current structure forces stuffing of the SOS *payload*, which is WRONG.
+                 # For now, we only stuff if it's the compressed data stream itself (not the SOS marker)
+                 # We will skip stuffing here since it's the SOS marker payload.
+                 pass
+
+            if len(segments_ordered) > 1 and order == len(segments_ordered) - 1:
+                # Assuming the last item in the list is the compressed data block
+                processed_data = self._stuff_bytes(data_payload)
+
+            # --- 3. Construct the Raw Bytes for the Segment ---
+
+            # SOI (FF D8) and EOI (FF D9) have no length/data fields
+            if marker_val in (0xffd8, 0xffd9):
+                raw_segment = struct.pack('>H', marker_val) # Write 2-byte marker
+
+            # All other segments require Marker + Length + Data
+            elif marker_val != 0xFFDA: # Don't reconstruct SOS here since it's the raw data
+
+                # Length value = (Payload size + 2 bytes for the length field itself)
+                length_value = len(processed_data) + 2
+
+                raw_segment = struct.pack('>H', marker_val)
+                raw_segment += struct.pack('>H', length_value) # Write 2-byte Big-Endian Length
+                raw_segment += processed_data                  # Write Data Payload
+
+            reconstructed_segments.append(raw_segment)
+
+        # --- 4. Final Output ---
+        return b"".join(reconstructed_segments)

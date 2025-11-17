@@ -28,5 +28,7 @@ else:
 
             if segment.marker == 0xda:
                 print(f"num_____: {segment_data.num_components}")
+
+
     except Exception as e:
         print(f"An error occurred during parsing: {e}")
