@@ -41,7 +41,8 @@ class JPEGparser:
         #    'com': [],         # 0xfe # comment
         #}    
 
-    def parse(self, file_path: str) -> dict:
+    # returns dictionaried segments as well as raw data
+    def parse(self, file_path: str):
         with open(file_path, 'rb') as file:
             data = file.read()
 
@@ -56,7 +57,7 @@ class JPEGparser:
                 full_marker = (0xff << 8) | segment.marker.value
                 self.markers.setdefault(segment_name,[]).append((full_marker, segment_length, segment_data, order, segment))
 
-            return self.markers
+            return self.markers, data
         except Exception as e:
             print(f"An error occured during Parsing: {e}")
 

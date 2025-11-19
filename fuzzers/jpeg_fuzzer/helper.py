@@ -1,5 +1,7 @@
 import random
 import copy
+import struct
+import string
 
 from mutations import Mutations # i dont know how to import
 
@@ -62,12 +64,21 @@ class JPEG_mutator:
 
 
     # random position of a marker (possibly making it double)
-    def double_markers(self, jpg_bytes, jpg_length, marker):
-        mutate_count  = 200 if marker_mutate_count is None else marker_mutate_count
+    def insert_random_markers(self, jpg_bytes, marker_dup_count=None):
+        data = bytearray(jpg_bytes)
 
-        r = random.randint(0, jpg_length)
+        mutate_count = 1 if marker_mutate_count is None else marker_mutate_count
 
-        return jpg_bytes[:r] + marker + jpg_bytes[(r + 2):]
+        for i in range(mutate_count):
+            marker = random.choice(list(self.markers.values()))[0]
+            marker_bytes = struct.pack('>H', marker)
+
+            r = random.randint(0, jpg_length)
+            
+            data.insert(r, marker_bytes[0])
+            data.insert(r + 1, marker_bytes[1])
+
+        return bytes(data)
 
     def marker_mutate(self, segments, num_to_mutate=None):
         count = num_to_mutate if num_to_mutate else 1
@@ -136,19 +147,18 @@ class JPEG_mutator:
             components = data.components
             return component_deletion(num, components)
 
-        marker, length, data, order = segment
+        marker, length, data, order, s = segment
         
-        if component_mutation:
-            data.num_components = random.randint(0, data.num_components)
+        if component_mutation and random.chocie([False, True]):
+            if random.choice([False, True]):
+                del data.components[random.randint(0, len(data.components) - 1)]
+                data.num_components -= 1
+            else:
+                data.num_components = random.randint(1, data.num_components + 1)
+                if random.choice([False, True]):
+                    del data.components[random.randint(0, len(data.components) - 1)]
             
-            strat = random.choice([component_pure_mutation, component_sync_mutation]) 
-            strat(data.num_components)
-
-        r = random.randint(0, len(data))
-
-        mutated = data[:r] + b'\xff' + data[r + 1:]
-
-        return mutated
+        return (marker, length, data, order, s)
     
     def sos_imagedata_mutation(self, image_data: bytes, cancel_byte_stuffing=None):
         data = bytearray(image_data)
@@ -163,7 +173,83 @@ class JPEG_mutator:
         data = self.byte_stuffing(data, True)
 
         return bytes(data)
+    
+    def app0_mutation(self, segment):
+        def _ascii_mutate(data: bytearray, num):
+            mutation_pool = string.ascii_letters + string.digits
+            random_char = random.choice(mutation_pool)
+            random_byte = random_char.encode('ascii')[0]
+            index = random.randint(0, len(data) - 1)
+            data[index] = random_byte
+            return data
 
+        def _random_val(self, bit_size: int) -> int:
+            """Returns a completely random integer value based on bit size (8-bit or 16-bit)."""
+            if bit_size == 16:
+                return random.randrange(0, 65536)
+            else: # 8-bit
+                return random.randrange(0, 256)
+
+        def _bitflip_val(self, value: int, num_bits: int) -> int:
+            """Flips a single random bit in an integer value."""
+            bit_index = random.randrange(0, num_bits)
+            return value ^ (1 << bit_index)
+
+        marker, length, data, order, s = segment
+
+        if random.choice([False, True]):
+            char = random.choice(string.ascii_letters)
+            magic = bytearray(data.magic.encode())
+
+            mutators = [
+                Mutations().bit_flip,
+                Mutations().byte_flip,
+                _ascii_mutate
+            ]
+
+            chosen_mutator = random.choice(mutators)
+            magic = chosen_mutator(magic, 1)
+
+            data.magic = bytes(magic).decode()
+        
+        """
+        Probabilistically and independently mutates core fields of the APP0 segment.
+        """
+        # List of fields and their sizes in bits
+        fields = [
+            ('version_major', 8),
+            ('version_minor', 8),
+            ('density_unit', 8),
+            ('density_x', 16),
+            ('density_y', 16),
+            ('thumbnail_x', 8),
+            ('thumbnail_y', 8),
+        ]
+
+        for field_name, bit_size in fields:
+
+            # Ensure the object has the field
+            if not hasattr(data_object, field_name):
+                continue
+
+            # --- INDEPENDENT PROBABILITY CHECK FOR EACH FIELD ---
+            if random.choice([False, True]):
+
+                current_value = getattr(data_object, field_name)
+
+                # Randomly choose between Bit Flip and Byte Flip
+                if random.choice([False, True]):
+                    # Bit Flip
+                    mutated_value = _bitflip_val(current_value, bit)_size)
+                else:
+                    # Byte Flip (random value assignment)
+                    mutated_value = _random_val(bit_size)
+
+                # Assign the mutated value back to the object
+                setattr(data_object, field_name, mutated_value)
+
+        return data_object
+    
     def single_segment_agnostic_mutation(self, segment: tuple):
         marker, length, data, order = segment   # Order kinda useless here
         

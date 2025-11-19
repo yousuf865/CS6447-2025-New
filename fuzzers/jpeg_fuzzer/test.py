@@ -13,6 +13,8 @@ else:
     # 2. Parse the data using the generated class
     try:
         parsed_file = Jpeg.from_bytes(data)
+
+        print(data)
         
         print("--- JPEG Parsing Successful ---")
         
@@ -28,7 +30,7 @@ else:
             print(f"[{segment_name}] Data: {segment_data}")
 
             if segment.marker == 0xe0:
-                print(f"num_____: {segment_data.density_x.to_bytes(2)}")
+                print(f"num_____: {getattr(segment_data, 'version_major')}")
 
 
     except Exception as e:
