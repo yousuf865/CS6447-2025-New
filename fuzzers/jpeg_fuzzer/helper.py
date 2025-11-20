@@ -110,15 +110,15 @@ class JPEG_mutator:
             else:
                 return data + r
 
-        data_precision, image_height, image_width, num_components, components = segment
+        marker, length, data, order, s = segment
         
-        data_precision = mutate_data(data_precision)
-        image_height = mutate_data(image_height)
-        image_width = mutate_data(image_width)
+        data.bits_per_sample = mutate_data(data.bits_per_sample)
+        data.image_height = mutate_data(data.image_height)
+        data.image_width = mutate_data(data.image_width)
 
         #TODO component mutate
         
-        return data_precision, image_height, image_width, num_components, components
+        return (marker, length, data, order, s)
 
     @staticmethod
     def byte_stuffing(image_data, check=None):
@@ -159,7 +159,7 @@ class JPEG_mutator:
 
         marker, length, data, order, s = segment
         
-        if component_mutation and random.chocie([False, True]):
+        if component_mutation and random.choice([False, True]):
             if random.choice([False, True]):
                 del data.components[random.randint(0, len(data.components) - 1)]
                 data.num_components -= 1

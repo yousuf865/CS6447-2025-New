@@ -63,12 +63,7 @@ types:
           cases:
             'marker_enum::app0': segment_app0
             'marker_enum::app1': segment_app1
-            # --- START SOF CHANGE ---
-            'marker_enum::sof0': segment_sof_data
-            'marker_enum::sof1': segment_sof_data
-            'marker_enum::sof2': segment_sof_data
-            'marker_enum::sof3': segment_sof_data
-            # --- END SOF CHANGE ---
+            'marker_enum::sof0': segment_sof0
             'marker_enum::sos': segment_sos
       - id: image_data
         size-eos: true
@@ -76,18 +71,21 @@ types:
     enums:
       marker_enum:
         0x01: tem
-        0xc0: sof0 # start of frame 0 (Baseline DCT)
-        0xc1: sof1 # start of frame 1 (Extended Sequential DCT)
-        0xc2: sof2 # start of frame 2 (Progressive DCT)
-        0xc3: sof3 # start of frame 3 (Lossless Sequential)
+        0xc0: sof0 # start of frame 0
+        0xc1: sof1 # start of frame 1
+        0xc2: sof2 # start of frame 2
+        0xc3: sof3 # start of frame 3
         0xc4: dht # define Huffman table
-        0xde: dhp # define hierarchical progression
+        0xc5: sof5 # start of frame 5
+        0xc6: sof6 # start of frame 6
+        0xc7: sof7 # start of frame 7
         0xd8: soi # start of image
         0xd9: eoi # end of image
         0xda: sos # start of scan
         0xdb: dqt # define quantization table
         0xdc: dnl # define number of lines
         0xdd: dri # define restart interval
+        0xde: dhp # define hierarchical progression
         0xe0: app0
         0xe1: app1
         0xe2: app2
@@ -148,8 +146,7 @@ types:
           switch-on: magic
           cases:
             '"Exif"': exif_in_jpeg
-  # Renamed from segment_sof0 to segment_sof_data to be generic for SOF0-SOF3
-  segment_sof_data:
+  segment_sof0:
     seq:
       - id: bits_per_sample
         type: u1

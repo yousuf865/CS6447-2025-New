@@ -94,21 +94,6 @@ class JPEGparser:
 
         return QT_info, QT_bytes
 
-    def SOF_parse(self, segment: tuple):
-        data = segment[2]
-
-        data_precision = data[0]
-        image_height = data[1:3]
-        image_width = data[3:5]
-        num_components = data[5:6]
-        components = []
-
-        curr = 6
-        for i in range(num_components):
-            component = data[curr : curr + 3]
-            components.append(component)
-            curr += 3
-        return data_precision, image_height, image_width, num_components, components
 
     def app0_reconstruction(self, marker_val, length, data):
         raw_segment = struct.pack('>HH', marker_val, length)
@@ -162,22 +147,39 @@ class JPEGparser:
 
             curr += 2
         return bytes(data)
+    
+    def sof_reconstruction(self, marker, length, data):
+        raw_segment = struct.pack('>HH', marker, length)
+
+        raw_segment = struct.pack(
+            '>BHHB',
+            data.bits_per_sample,
+            data.image_height,
+            data.image_width,
+            data.num_components
+        )
+
+        for comp in data.components:
+            raw_segment += struct.pack(
+               '>BBB',
+               comp.id,
+               comp.sampling_factors,
+               comp.quantization_table_id
+            )
+
+        return raw_segment
 
     # Remake the jpeg
     # --------------------
     # Current syntax of segments are (length, data, order)
     def jpeg_constructor(self, segments_set) -> bytes:
-
-        # --- 1. Order Segments ---
         segments_ordered = []
         for segment_list in self.markers.values():
             segments_ordered.extend(segment_list)
-
-        # Sort based on the 'order' index (the 4th element: x[3])
-        # Note: I changed the index from your original x[2] to x[3] based on your tuple structure (marker, length, data, order)
+        
+        # Order is on the 4th element of the tuple
         segments_ordered.sort(key=lambda x: x[3])
 
-        # --- 2. Prepare (Stuff Bytes and Recalculate Lengths) ---
         reconstructed_segments = []
 
         for marker_val, length, data_payload, order, segment in segments_ordered:
@@ -187,25 +189,24 @@ class JPEGparser:
             # SOI (FF D8) and EOI (FF D9) have no length/data fields
             if marker_val in (0xffd8, 0xffd9):
                 raw_segment = struct.pack('>H', marker_val) # Write 2-byte marker
+ 
+            elif marker_val in (0xffc0, 0xffc1, 0xffc2):
+                raw_segment = self.sof_reconstruction(marker_val, length, data_payload)
 
-            # All other segments require Marker + Length + Data
-            elif marker_val not in (0xFFDA, 0xffe0): # Don't reconstruct SOS here since it's the raw data
-
-                # Length value = (Payload size + 2 bytes for the length field itself)
-                length_value = length
-                
-                raw_segment = struct.pack('>HH', marker_val, length_value) # Write 2-byte Big-Endian Length
-                raw_segment += processed_data                  # Write Data Payload
-            
             elif marker_val == 0xffe0:
                 raw_segment = self.app0_reconstruction(marker_val, length, data_payload)
 
             elif marker_val == 0xFFDA:
                 raw_segment = self.SOS_header_reconstruction(marker_val, length, data_payload)
-                #raw_segment += self.byte_stuffing(segment.image_data)
                 raw_segment += segment.image_data
+
+            # All other segments require Marker + Length + Data
+            elif marker_val not in (0xFFDA, 0xffe0, 0xffc0, 0xffc1, 0xffc2):
+                length_value = length
+                
+                raw_segment = struct.pack('>HH', marker_val, length_value) 
+                raw_segment += processed_data                  # Write Data Payload
 
             reconstructed_segments.append(raw_segment)
         
-        # --- 4. Final Output ---
         return b"".join(reconstructed_segments)

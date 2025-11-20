@@ -29,8 +29,8 @@ else:
             print(f"[{segment_name}][{hex(mark)}] Length: {segment_length}")
             print(f"[{segment_name}] Data: {segment_data}")
 
-            if segment.marker == 0xe0:
-                print(f"num_____: {getattr(segment_data, 'version_major')}")
+            if segment.marker == 0xc2:
+                print(f"num_____: {getattr(segment_data, 'image_height')}")
 
 
     except Exception as e:
