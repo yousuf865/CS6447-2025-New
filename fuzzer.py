@@ -1,14 +1,12 @@
 import subprocess
-import csv
+import resource
 import os
-import random
-import string
 import subprocess
-import glob
 import shutil
 import time
 import magic
 import inspect
+import itertools
 # Custom imports/defined classes
 from fuzzers.csv_fuzzer import CSVFuzzer
 from fuzzers.json_fuzzer import JSONFuzzer
@@ -16,7 +14,7 @@ from fuzzers.xml_fuzzer import XMLFuzzer
 from fuzzers.plaintext_fuzzer import PlainTextFuzzer
 from fuzzers.xml_fuzzer import XMLFuzzer
 from mutations import Mutations
-import itertools
+
 
 csv_fuzzer = CSVFuzzer()
 json_fuzzer = JSONFuzzer()
@@ -50,22 +48,31 @@ class Fuzzer:
     def run_target(self, src: str, payload: str):
         try:
             start_time = time.time()
-            process = subprocess.run(['./' + src], input=payload, capture_output=True, text=True)
+            before = resource.getrusage(resource.RUSAGE_CHILDREN)
+            process = subprocess.run(['./' + src], input=payload, capture_output=True, text=True, timeout=0.5)
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
+            cpu_time = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
             end_time = time.time()
             
             elapsed_time = end_time - start_time
             output = process.stdout
             error = process.stderr
             return_code = process.returncode
-            return return_code, output, error, elapsed_time
+
+            return return_code, output, error, elapsed_time, cpu_time
+        except subprocess.TimeoutExpired:
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
+            cpu_time = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
+            # print(f"Elapsed time: {elapsed_time}, CPU time: {cpu_time}")
+            return 0, "", "Error: TimeoutExpired", elapsed_time, cpu_time
         except Exception as e:
-            return 0, "", f"Error: {e}", 0.0
+            # print(f"Error running target: {e}") 
+            return 0, "", f"Error: {e}", 0.0, 0.0
 
     def count_positional_args(self, func):
-        # Get the signature of the function
         sig = inspect.signature(func)
-        
-        # Count the number of positional arguments in a function
         positional_args = [
             param for param in sig.parameters.values()
             if param.default == inspect.Parameter.empty and
@@ -73,9 +80,31 @@ class Fuzzer:
         ]
         return len(positional_args)
 
+    def is_this_a_sleeper_or_looper(self, cpu_time, elapsed_time) -> int:
+        if elapsed_time <= 0.5:
+            return 0
+        cpu_fraction = cpu_time / elapsed_time
+        if cpu_fraction < 0.5:
+            return 1
+        if elapsed_time > 0.5:
+            return 2
+        return 0
+
+    def should_start_loop_check(self, elapsed_time: float) -> bool:  
+        return elapsed_time > 2.0
+    def is_this_a_crash(self, return_code: int, stderr: str) -> bool:
+        if return_code < 0 and return_code != -6:
+            return True
+        if return_code == -6 and 'stack smash' in stderr.lower():
+            return True
+        return False
     
     def sample_name(self, bin_name: str, file_type, file_type_dict: dict, num_tests: int = 100):
-        crash_map = {}
+        start_time = time.time()
+        sleep_count = 0
+        loop_count = 0
+        max_hits = 10
+        watch_for_loops = False
         max_val_bin = {
             "csv1": 257,
             "csv2": 257
@@ -91,29 +120,48 @@ class Fuzzer:
             if bin_name in max_val_bin.keys():
                 file_type_dict[input_type].set_max_val(max_val_bin[bin_name])
             self.create_output_dir()
-            # checks for the amount of arguments in the function
             arg_amount = self.count_positional_args(file_type_dict[input_type].mutation_parameters)
-            # check for default values implementation
-            # maybe have this be the only check? 
             try:
                 normal_values = file_type_dict[input_type].take_input(f"example_inputs/{bin_name}.txt")
             except Exception as e:
                 return f"Error in the implementation: {e}"
-            
-            # Apply General Mutation Strategies on given example input to create mutated payloads
             strategies = ['bit_flip', 'byte_flip', 'known_ints', 'arithmetic']
             print("RUNNING GENERAL MUTATION STRATEGIES  ", end="\r", flush=True)
-            for strat in strategies:
-                # break
-                for i in range(1, num_tests):
-                    mutated_payload = mutations.run_mutation_strategies(f"example_inputs/{bin_name}.txt", input_type, strat)
-                    return_code, output, error, elapsed_time = self.run_target(f"binaries/{bin_name}", mutated_payload)
+            strat_index = 0
+
+            for i in range(num_tests):
+                if time.time() - start_time >= 54:
+                    return {0: [("No errors found, Time limit reached, hangs detected: sleeps={}, loops={}".format(sleep_count, loop_count), "",
+                                time.time() - start_time, "time_limit")]}
+
+                strat = strategies[strat_index]
+
+                mutated_payload = mutations.run_mutation_strategies(
+                    f"example_inputs/{bin_name}.txt", input_type, strat
+                )
+                return_code, output, error, elapsed_time, cpu_time = \
+                    self.run_target(f"binaries/{bin_name}", mutated_payload)
                     
-                    
-                    if return_code < 0:
-                        with open(f"fuzzer_output/bad_{bin_name}.txt", "a+") as file:
-                            file.write(f"{mutated_payload}")
-                        return {return_code:[( error, output, elapsed_time, strat)]}
+                sleeper_or_looper = self.is_this_a_sleeper_or_looper(cpu_time, elapsed_time)
+                if sleeper_or_looper == 1:
+                    sleep_count += 1
+                    strat_index = (strat_index + 1) % len(strategies)
+                elif sleeper_or_looper == 2:
+                    loop_count += 1
+                    strat_index = (strat_index + 1) % len(strategies)
+                if sleep_count + loop_count >= max_hits:
+                    break
+                
+                strat_index = (i // (num_tests // len(strategies))) % len(strategies)
+
+
+                if self.is_this_a_crash(return_code, error):
+                    with open(f"fuzzer_output/bad_{bin_name}.txt", "a+") as file:
+                        file.write(f"{mutated_payload}")
+                    return {
+                        return_code: [(error, output, elapsed_time, strat)]
+                    }
+
 
 
             # Apply Mutation Parameters derived from example input to generate new random payloads
@@ -132,33 +180,42 @@ class Fuzzer:
             avg_elapsed_time = 0.0
             # arg_mutation_summary = {}
             for i in range (1, num_tests):
-                # auto populates the args_mutation list with random True/False values
-                # could change this to be modifiable depending on the implementation
-                # so each implementation can have different inputs
-                
+                # print(f"Test {i}/{num_tests} | ar_index: {args_mutation_index}")
+                if time.time() - start_time >= 54:
+                    return {0: [("No errors found, Time limit reached, hangs detected: sleeps={}, loops={}".format(sleep_count, loop_count), "", time.time() - start_time, "time_limit")]}
                 patterns_list = file_type_dict[input_type].mutation_parameters(
                         *args_mutation,
                         normal_values
                 )
                 payload = patterns_list[0]
-                mutation_type = patterns_list[1]
-                
-                return_code, output, error, elapsed_time = self.run_target(f"binaries/{bin_name}", payload)
+                return_code, output, error, elapsed_time, cpu_time = self.run_target(f"binaries/{bin_name}", payload)
+                if watch_for_loops == False and self.should_start_loop_check(elapsed_time):
+                        watch_for_loops = True
                 if elapsed_time != 0.0:
                     if avg_elapsed_time > 0.0:
                         diff_ratio = abs(elapsed_time - avg_elapsed_time) / avg_elapsed_time
-                        if diff_ratio <= 0.1 and i - flip_arg_mutation_at >= 10 :
+                        if diff_ratio <= 0.1 and i - flip_arg_mutation_at >= 10 or self.is_this_a_sleeper_or_looper(cpu_time, elapsed_time) > 0:
                             args_mutation_index = (args_mutation_index + 1) % len(all_combinations)
                             flip_arg_mutation_at = i
                             args_mutation = all_combinations[args_mutation_index]
                             
                 avg_elapsed_time = (avg_elapsed_time * (i - 1) + elapsed_time) / i
+                
+                sleeper_or_looper = self.is_this_a_sleeper_or_looper(cpu_time, elapsed_time)
+                if sleeper_or_looper == 1:
+                    sleep_count += 1
+                    strat_index = (strat_index + 1) % len(strategies)
+                elif sleeper_or_looper == 2:
+                    loop_count += 1
+                    strat_index = (strat_index + 1) % len(strategies)
+                if sleep_count + loop_count >= max_hits*2:
+                    break
 
-                if return_code < 0:
+                if self.is_this_a_crash(return_code, error):
                     with open(f"fuzzer_output/bad_{bin_name}.txt", "a+") as file:
                         file.write(f"{payload}")
                     return {return_code:[ (error, output, elapsed_time, 'param_mutation')]}
-        return crash_map
+        return {0: [("No errors found, Exhausted max tests, hangs detected: sleeps={}, loops={}".format(sleep_count, loop_count), "", time.time() - start_time, "no_crash")]}
 
 
     # So far this is specified for csv1, but we can eventually change this to be more general
@@ -167,10 +224,8 @@ class Fuzzer:
         file_type = file_magic.from_file(f"example_inputs/{bin_name}.txt")
         if "HTML" in file_type:
           file_type = "XML"
-        if 'csv2' in bin_name:
+        if 'csv' in bin_name:
             file_type = "CSV"
-        if 'xml' in bin_name:
-            return {}
 
         file_type_dict = {
             "CSV": csv_fuzzer,
