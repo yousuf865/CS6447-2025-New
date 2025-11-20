@@ -105,7 +105,6 @@ class Fuzzer:
                 # break
                 for i in range(1, num_tests):
                     mutated_payload = mutations.run_mutation_strategies(f"example_inputs/{bin_name}.txt", input_type, strat)
-                    print(mutated_payload)
                     return_code, output, error, elapsed_time = self.run_target(f"binaries/{bin_name}", mutated_payload)
                     
                     is_new_crash = True
@@ -114,7 +113,7 @@ class Fuzzer:
                         for crash in prev_crashes:
                             if crash[0] == error and crash[1] == output:
                                 # take this payload as new crash
-                                prev_elapsed = crash[3] if len(crash) > 3 else 0.0
+                                prev_elapsed = crash[2] if len(crash) > 3 else 0.0
                                 if prev_elapsed == 0.0:
                                     diff_ratio = 1.0 if elapsed_time != 0.0 else 0.0
                                 else:
@@ -124,16 +123,10 @@ class Fuzzer:
                                     is_new_crash = False
                                     break
                         # We do this to get the specifics of the error output via GDB
-                        summary = f"Test {i} for {bin_name}:\n{error}\nFound with these parameters:\n{strat}\n"
+                        if is_new_crash:
+                            crash_map.setdefault(return_code, []).append((error, output, elapsed_time, strat))
                         with open(f"fuzzer_output/bad_{bin_name}.txt", "a+") as file:
                             file.write(f"{mutated_payload}")
-                            return summary                       
-                    output_dict = {f'output_{i}': output, f'strategy_{i}': strat}
-
-                    if output not in output_list:
-                        output_list.append(output)
-                        unique_output_mutations.append(output_dict)
-                        hhh[output] = strat
 
 
             # Apply Mutation Parameters derived from example input to generate new random payloads
@@ -164,10 +157,6 @@ class Fuzzer:
                 mutation_type = patterns_list[1]
                 
                 return_code, output, error, elapsed_time = self.run_target(f"binaries/{bin_name}", payload)
-                print(f'bin: {bin_name} | test: {i}/{num_tests} | return code: {return_code} | elapsed time: {elapsed_time:.4f}s | args_index: {args_mutation_index}/{len(all_combinations)-1} | stderr: {error}    ')
-                if return_code != 0:
-                    print(f'Non-zero return code detected: {return_code}, stderr: {error}, output: {output}')
-                    return summary
                 if elapsed_time != 0.0:
                     if avg_elapsed_time > 0.0:
                         diff_ratio = abs(elapsed_time - avg_elapsed_time) / avg_elapsed_time
@@ -178,24 +167,29 @@ class Fuzzer:
                             
                 avg_elapsed_time = (avg_elapsed_time * (i - 1) + elapsed_time) / i
 
-                if "Error:" in output or error != "":
+                is_new_crash = True
+                if "Error:" in output or error != "" or return_code != 0:
                     # We do this to get the specifics of the error output via GDB
-                    summary = f"Test {i} for {bin_name}:\n{error}\nFound with these parameters:\n{mutation_type}\n"
-                    with open(f"fuzzer_output/bad_{bin_name}.txt", "w+") as file:
-                        file.write(f"{payload}")
-                    output = error
-                    return summary
-                
-                output_dict = {f'output_{i}': output, f'mutation_type_{i}': mutation_type}
+                    
+                    prev_crashes = crash_map.get(return_code, [])
+                    for crash in prev_crashes:
+                        if crash[0] == error and crash[1] == output:
+                            # take this payload as new crash
+                            prev_elapsed = crash[2] if len(crash) > 3 else 0.0
+                            if prev_elapsed == 0.0:
+                                diff_ratio = 1.0 if elapsed_time != 0.0 else 0.0
+                            else:
+                                diff_ratio = abs(elapsed_time - prev_elapsed) / prev_elapsed
 
-                if output not in output_list:
-                    output_list.append(output)
-                    unique_output_mutations.append(output_dict)
-                    hhh[output] = mutation_type
-        
-        else:
-            print(f"Error: {bin_name} not implemented yet!\nMoving onto the next binary...", end="\r", flush=True)
-        return summary
+                            if diff_ratio < 0.6:
+                                is_new_crash = False
+                                break
+                        # We do this to get the specifics of the error output via GDB
+                    if is_new_crash:
+                        crash_map.setdefault(return_code, []).append((error, output, elapsed_time, 'param_mutation'))
+                    with open(f"fuzzer_output/bad_{bin_name}.txt", "a+") as file:
+                        file.write(f"{payload}")
+        return crash_map
 
 
     # So far this is specified for csv1, but we can eventually change this to be more general
@@ -206,8 +200,9 @@ class Fuzzer:
           file_type = "XML"
         if 'csv2' in bin_name:
             file_type = "CSV"
-        else: 
-            return
+        if 'xml'  in bin_name:
+            return {}
+
         file_type_dict = {
             "CSV": csv_fuzzer,
             "JSON": json_fuzzer,
