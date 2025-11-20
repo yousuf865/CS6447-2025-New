@@ -170,7 +170,7 @@ class JPEGparser:
     def sof_reconstruction(self, marker, length, data):
         raw_segment = struct.pack('>HH', marker, length)
 
-        raw_segment = struct.pack(
+        raw_segment += struct.pack(
             '>BHHB',
             data.bits_per_sample,
             data.image_height,

@@ -30,7 +30,16 @@ class JPEGFuzzer:
         return
     
     # marker, length, data, order, segment
-    def mutation_parameters(self, only_double_marker=None, marker_mutate_count=None, mutate_markers=None):
+    def mutation_parameters(self, 
+                image_data_bool=None, 
+                sof_bool=None,
+                sos_bool=None,
+                dht_bool=None,
+                app0_bool=None,
+                only_double_marker=None, 
+                marker_mutate_count=None, 
+                mutate_markers=None
+    ):
         mutate_count  = 200 if marker_mutate_count is None else marker_mutate_count
         
         # insert "valid" markers randomly
@@ -49,23 +58,27 @@ class JPEGFuzzer:
                 sof = self.segments[key][0]
         
         image_data = sos[4].image_data
-
+        
+        if image_data_only:
+            self.segments['sos'][0][4].image_data = JPEG_mutator.sos_imagedata_mutation(image_data)
+            return self.parser.jpeg_constructor(self.segments)
+    
         #for marker in jpg_marker_bytes.values():
         #    mutate_bytes = double_markers(self.jpg_bytes, len(self.jpg_bytes), marker)
             
-        if random.choice([False, True]):
+        if random.choice([False, True]) and app0_bool:
             self.segments['app0'][0] = JPEG_mutator.app0_mutation(app0)
 
-        if random.choice([False, True]):
+        if random.choice([False, True]) and dht_bool:
             self.segments['dht'] = JPEG_mutator.dht_mutate(dht)
 
-        if random.choice([False, True]):
+        if random.choice([False, True]) and sos_bool:
             self.segments['sos'][0] = JPEG_mutator.sos_mutate(sos, random.choice([False, True])) # again, still in jpeg_parser.py
         
-        if random.choice([False, True]):
+        if random.choice([False, True]) and sof_bool:
             self.segments[sof_version][0] = JPEG_mutator.sof_mutate(sof) # same
 
-        if random.choice([False, True]):
+        if random.choice([False, True]) and image_data_bool:
             self.segments['sos'][0][4].image_data = JPEG_mutator.sos_imagedata_mutation(image_data)
  
         return self.parser.jpeg_constructor(self.segments)
