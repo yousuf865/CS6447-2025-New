@@ -6,6 +6,20 @@ fuzzer = JPEGFuzzer()
 
 fuzzer.take_input('../oskar-smethurst-B1GtwanCbiw-unsplash.jpg')
 
-mutated = fuzzer.mutation_parameters()
+#mutated = fuzzer.mutation_parameters()
+with open("../oskar-smethurst-B1GtwanCbiw-unsplash.jpg", "rb") as f:
+    # 1. Load the binary data
+    mutated = f.read()
 
-sys.stdout.buffer.write(mutated)
+
+try:
+    sys.stdout.buffer.write(mutated)
+    sys.stdout.buffer.flush()
+
+except BrokenPipeError:
+    # Handle the error and exit gracefully
+    try:
+        sys.stdout.close()
+    except:
+        pass
+    sys.exit(0)
