@@ -203,7 +203,7 @@ class JPEGparser:
 
         for segment_tuple in segments_ordered:
             if len(segment_tuple) == 5:
-                marker_val, length, data_payload, order, s = segment_tuple
+                marker_val, length, data_payload, order, segment = segment_tuple
             elif len(segment_tuple) == 4:
                 marker_val, length, data_payload, order = segment_tuple
 
