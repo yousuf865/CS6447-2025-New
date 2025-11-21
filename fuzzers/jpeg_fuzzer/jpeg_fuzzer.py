@@ -36,6 +36,7 @@ class JPEGFuzzer:
                 sos_bool=None,
                 dht_bool=None,
                 app0_bool=None,
+                insert_random_marker=None,
                 only_double_marker=None, 
                 marker_mutate_count=None, 
                 mutate_markers=None
@@ -44,7 +45,7 @@ class JPEGFuzzer:
         
         # insert "valid" markers randomly
         if only_double_marker:
-            return JPEG_mutator.insert_random_markers(self.raw_bytes)
+            return JPEG_mutator.insert_random_markers(self.raw_bytes, self.segments)
 
         app0 = self.segments['app0'][0]
         dht = self.segments['dht']
@@ -89,6 +90,10 @@ class JPEGFuzzer:
             print('mutating image data')
             self.segments['sos'][0][4].image_data = JPEG_mutator.sos_imagedata_mutation(image_data)
  
-        return self.parser.jpeg_constructor(self.segments)
+        mutated_jpeg_bytes = self.parser.jpeg_constructor(self.segments)
         
+        if random.choice([False, True]) and insert_random_marker:
+            return JPEG_mutator.insert_random_markers(mutated_jpeg_bytes, self.segments)
+
+        return mutated_jpeg_bytes
             
